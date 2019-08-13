@@ -4,6 +4,7 @@ const Discord = require("discord.js") //Discord.js 모듈 불러오기
 const client = new Discord.Client() //클라이언트(봇) 생성
 const fs = require("fs") //파일 리더기
 const mongoose = require("mongoose") //데이터베이스 모듈 불러오기
+const db = mongoose.connection
 
 
 client.commands = new Discord.Collection() //클라이언트 내에 commands 컬렉션 생성
@@ -76,8 +77,36 @@ client.on("ready", () => { //봇이 온라인 상태로 전환될시(모든 작�
 client.on("message", async message => {
     if(message.system) return //해당 메세지가 시스템(유저가 들어올때 시스템 메세지 뜨는거요) 메세지일시 평상시로 돌아감(리턴)
     if(message.author.bot) return //해당 메세지를 쓴 유저가 봇일시 리턴
-    if(!message.content.startsWith(process.env.PREFIX)) return //메세지가 설정한 접두사로 시작하지 않을시 리턴
     if(message.channel.type === "dm") return //메세지를 쓴 채널이 디엠일시 리턴
+
+
+    db.collection("users").findOne({ _id: message.author.id }, (err, res) => { //메세지를 치면 해당 유저를 데이터베이스에 검색
+        if(err) console.error(err) //오류시 출력
+
+        if(!res) { //만약 해당 유저를 못 찾을시
+            return //리턴
+        }else{
+            let addXp = Math.round(Math.random() * 5) + 10 //올라갈 경험치를 설정
+            let nextLevel = 500 + res.level * 500 //다음 레벨로 가는 경험치를 설정
+            db.collection("users").findOneAndUpdate({ _id: message.author.id }, { $set: { //해당 유저를 찾은후 업데이트
+                xp: res.xp + addXp //기존의 경험치 + 새로 얻을 경험치
+            }})
+
+            if(res.xp + addXp >= nextLevel) { //만약 업데이트 된 수치가 설정한 다음 레벨로 가는 경험치를 넘거나 일치할시
+                let newLevel = res.level + 1 //다음 레벨을 선언
+                db.collection("users").findOneAndUpdate({ _id: message.author.id }, { $set: { //해당 유저를 검색후 업뎃
+                    level: newLevel, //다음 레벨로 업뎃
+                    xp: 0, //경험치 초기화
+                    money: res.money + 100 //해당 유저 소유금에 100원 추가
+                }}).then(async() => { //성공시
+                    let levelupchannel = client.channels.get("레벨업 문구 채널ID") //레벨업 문구 채널ID를 봇의 채널 중에서 찾고,
+                    await levelupchannel.send(`**${message.author} 님의 레벨업을... (커스텀, 예시: 축하드립니다.)\n현재 ${message.author} 님의 레벨은 ${nextLevel} 입니다.`) //찾은 채널에 레벨업 문구를 전송
+                })
+            }
+        }
+    })
+    
+    if(!message.content.startsWith(process.env.PREFIX)) return //메세지가 설정한 접두사로 시작하지 않을시 리턴
 
     const args = message.content.slice(process.env.PREFIX.length).trim().split(/ +/g) //메세지에서 접두사의 글자수 만큼 시작 부분 제거 후, 공백 제거, split로 메세지를 Array화
     const command = args.shift().toLowerCase() //그렇게 만들어진 Array에서 첫부분을 shift()로 추출하고(shift()는 pop()와 반대로 제일 처음을 가져옵니다)) 그 추출한 메세지를 소문자화
